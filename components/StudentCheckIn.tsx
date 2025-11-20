@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAttendance } from '../contexts/AttendanceContext';
 import { generateStudentQuote } from '../services/geminiService';
-import { CheckCircle, StopCircle, Users, ArrowLeft, ChevronRight, Database, RefreshCw, WifiOff, AlertCircle } from 'lucide-react';
+import { CheckCircle, StopCircle, Users, ArrowLeft, ChevronRight, Database, RefreshCw, WifiOff, AlertCircle, Trophy, Medal } from 'lucide-react';
 import CloudSetupModal from './CloudSetupModal';
 
 const StudentCheckIn: React.FC = () => {
@@ -15,7 +15,8 @@ const StudentCheckIn: React.FC = () => {
     jsonBinConfig, 
     refreshData,
     cloudStatus,
-    cloudError
+    cloudError,
+    getAggregatedStats
   } = useAttendance();
   
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -27,6 +28,16 @@ const StudentCheckIn: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [aiQuote, setAiQuote] = useState('');
+
+  // Get stats for leaderboard
+  const stats = getAggregatedStats();
+  const top10 = stats.slice(0, 10);
+
+  const formatDuration = (ms: number) => {
+    const hours = Math.floor(ms / (1000 * 60 * 60));
+    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours}h ${minutes}m`;
+  };
 
   // Reset selection after timeout if no action
   useEffect(() => {
@@ -98,10 +109,10 @@ const StudentCheckIn: React.FC = () => {
     setError('');
   };
 
-  // Render Groups Selection
+  // Render Groups Selection (Main Screen)
   if (!selectedGroupId) {
     return (
-      <div className="max-w-4xl mx-auto animate-fade-in relative">
+      <div className="max-w-4xl mx-auto animate-fade-in relative pb-10">
          {showCloudModal && <CloudSetupModal onClose={() => setShowCloudModal(false)} />}
          
          {/* Top Bar: Cloud Settings & Refresh */}
@@ -197,6 +208,51 @@ const StudentCheckIn: React.FC = () => {
                 ))
               )}
             </div>
+         </div>
+
+         {/* Leaderboard Section */}
+         <div className="mt-8 bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
+              <div className="bg-gradient-to-r from-amber-500 to-orange-500 p-4 text-white flex items-center gap-2">
+                  <Trophy className="w-6 h-6" />
+                  <h3 className="font-bold text-lg">本周学习时长排行榜 (Top 10)</h3>
+              </div>
+              <div className="p-0">
+                  {top10.length === 0 ? (
+                      <div className="p-8 text-center text-slate-400">
+                          暂无数据，快来成为第一个打卡的吧！
+                      </div>
+                  ) : (
+                      <div className="overflow-x-auto">
+                          <table className="w-full text-left text-sm">
+                              <thead className="bg-slate-50 text-slate-500 font-medium">
+                                  <tr>
+                                      <th className="px-4 py-3 w-16 text-center">排名</th>
+                                      <th className="px-4 py-3">姓名</th>
+                                      <th className="px-4 py-3">队伍</th>
+                                      <th className="px-4 py-3 text-right">时长</th>
+                                  </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                  {top10.map((stat, index) => (
+                                      <tr key={stat.studentId} className="hover:bg-slate-50">
+                                          <td className="px-4 py-3 text-center font-bold text-slate-600">
+                                              {index === 0 && <Medal className="w-5 h-5 text-yellow-500 mx-auto" />}
+                                              {index === 1 && <Medal className="w-5 h-5 text-slate-400 mx-auto" />}
+                                              {index === 2 && <Medal className="w-5 h-5 text-amber-700 mx-auto" />}
+                                              {index > 2 && <span>{index + 1}</span>}
+                                          </td>
+                                          <td className="px-4 py-3 font-medium text-slate-800">{stat.studentName}</td>
+                                          <td className="px-4 py-3 text-slate-500">{stat.teamNumber}</td>
+                                          <td className="px-4 py-3 text-right font-mono font-bold text-blue-600">
+                                              {formatDuration(stat.totalDurationMs)}
+                                          </td>
+                                      </tr>
+                                  ))}
+                              </tbody>
+                          </table>
+                      </div>
+                  )}
+              </div>
          </div>
       </div>
     );
