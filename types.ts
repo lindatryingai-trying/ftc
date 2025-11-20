@@ -1,3 +1,4 @@
+
 export interface Group {
   id: string;
   name: string;
@@ -32,12 +33,25 @@ export interface GeminiAnalysis {
   recommendations: string;
 }
 
+export interface JsonBinConfig {
+  binId: string;
+  apiKey: string;
+}
+
 export interface FirebaseConfig {
   apiKey: string;
   authDomain: string;
   databaseURL: string;
   projectId: string;
-  storageBucket?: string;
-  messagingSenderId?: string;
+  storageBucket: string;
+  messagingSenderId: string;
   appId: string;
+  measurementId?: string;
+}
+
+export interface SyncData {
+  sessions: AttendanceSession[];
+  groups: Group[];
+  students: RegisteredStudent[];
+  updatedAt: number;
 }

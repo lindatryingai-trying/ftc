@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AttendanceProvider, useAttendance } from './contexts/AttendanceContext';
 import StudentCheckIn from './components/StudentCheckIn';
@@ -61,12 +62,19 @@ const IOSInstallPrompt: React.FC = () => {
 const ShareModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'scan' | 'install'>('scan');
-  const url = window.location.href;
+  const { jsonBinConfig } = useAttendance();
+  
+  // Construct URL: If connected to cloud, append credentials for auto-setup on other devices
+  let shareUrl = window.location.href.split('?')[0];
+  if (jsonBinConfig) {
+      shareUrl += `?binId=${jsonBinConfig.binId}&apiKey=${jsonBinConfig.apiKey}`;
+  }
+
   // Using a reliable public QR code API
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(shareUrl)}`;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(url);
+    navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -76,7 +84,7 @@ const ShareModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
         <div className="bg-slate-800 p-4 text-white flex justify-between items-center shrink-0">
           <h3 className="font-bold flex items-center gap-2">
-            <Smartphone className="w-5 h-5" /> 手机访问与安装
+            <Smartphone className="w-5 h-5" /> 手机访问与同步
           </h3>
           <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
             <X className="w-5 h-5" />
@@ -88,7 +96,7 @@ const ShareModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
              onClick={() => setActiveTab('scan')} 
              className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'scan' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-slate-500 hover:bg-slate-50'}`}
            >
-             扫码访问
+             扫码同步 (推荐)
            </button>
            <button 
              onClick={() => setActiveTab('install')} 
@@ -105,17 +113,19 @@ const ShareModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 <img src={qrUrl} alt="QR Code" className="w-48 h-48 object-contain" />
               </div>
               
-              <p className="text-slate-800 font-bold mb-2">扫码在手机上打开</p>
+              <p className="text-slate-800 font-bold mb-2">
+                  {jsonBinConfig ? '学生扫码自动连接' : '扫码在手机上打开'}
+              </p>
               <p className="text-slate-500 text-sm mb-6">
-                推荐使用手机系统相机扫码。
+                {jsonBinConfig ? '扫描此码，学生端将自动同步最新的分组和名单。' : '推荐使用手机系统相机扫码。'}
               </p>
 
               <div className="w-full relative">
                  <input 
                   type="text" 
                   readOnly 
-                  value={url} 
-                  className="w-full pr-12 pl-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 outline-none"
+                  value={shareUrl} 
+                  className="w-full pr-12 pl-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 outline-none text-ellipsis"
                  />
                  <button 
                   onClick={handleCopy}
@@ -150,10 +160,6 @@ const ShareModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                   <li>点击右上角的 <strong>菜单按钮</strong> <MoreVertical className="w-3 h-3 inline" />。</li>
                   <li>选择 <strong>“安装应用”</strong> 或 <strong>“添加到主屏幕”</strong>。</li>
                 </ol>
-              </div>
-              
-              <div className="text-center text-xs text-slate-400 mt-4 bg-slate-100 p-2 rounded-lg">
-                 小提示：安装后，App 将以全屏模式运行，体验如同原生应用。
               </div>
             </div>
           )}
@@ -230,12 +236,42 @@ const LoginModal: React.FC<{ onClose: () => void, onSuccess: () => void }> = ({ 
 };
 
 const AppContent: React.FC = () => {
-  const { isCloudMode } = useAttendance();
   const [view, setView] = useState<'student' | 'teacher'>('student');
   const [imgError, setImgError] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [connectMsg, setConnectMsg] = useState<{type: 'success'|'error', text: string} | null>(null);
+  
+  const { connectCloud } = useAttendance();
+
+  // Auto-Config from URL params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const binId = params.get('binId');
+    const apiKey = params.get('apiKey');
+    
+    if (binId && apiKey) {
+        // Automatically connect if credentials are present in URL
+        connectCloud(binId, apiKey).then(() => {
+            console.log("Auto-connected via URL");
+            setConnectMsg({ type: 'success', text: '已自动连接到云端数据库！' });
+            // Clean URL to hide keys
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }).catch(e => {
+            console.error("Auto-connect failed", e);
+            setConnectMsg({ type: 'error', text: '连接失败，请让老师重新生成二维码。' });
+        });
+    }
+  }, [connectCloud]);
+
+  // Auto hide message
+  useEffect(() => {
+      if(connectMsg) {
+          const timer = setTimeout(() => setConnectMsg(null), 5000);
+          return () => clearTimeout(timer);
+      }
+  }, [connectMsg]);
 
   const handleTeacherClick = () => {
     if (isAuthenticated) {
@@ -252,7 +288,16 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col relative">
+      {/* Toast Notification */}
+      {connectMsg && (
+          <div className={`fixed top-20 left-1/2 -translate-x-1/2 z-[150] px-6 py-3 rounded-full shadow-lg text-sm font-bold animate-fade-in flex items-center gap-2
+            ${connectMsg.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+              {connectMsg.type === 'success' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
+              {connectMsg.text}
+          </div>
+      )}
+
       {/* Navbar */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -274,12 +319,6 @@ const AppContent: React.FC = () => {
               <h1 className="text-xl font-bold text-slate-800 tracking-tight sm:hidden">FTC打卡机</h1>
               <div className="flex items-center gap-2">
                 <p className="text-xs text-slate-500 -mt-1 hidden sm:block">智能考勤系统</p>
-                {isCloudMode && (
-                  <div className="hidden sm:flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-100 uppercase tracking-wider">
-                      <Cloud className="w-3 h-3" />
-                      <span>Cloud Sync</span>
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -326,12 +365,6 @@ const AppContent: React.FC = () => {
         {view === 'student' ? (
           <div className="animate-fade-in">
             <div className="text-center mb-12">
-              {isCloudMode && (
-                <div className="inline-flex sm:hidden items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full mb-4 border border-green-100">
-                    <Cloud className="w-3 h-3" />
-                    <span>云端数据同步中</span>
-                </div>
-              )}
               <h2 className="text-3xl font-bold text-slate-800 mb-3">欢迎来到学习中心</h2>
               <p className="text-slate-500 max-w-lg mx-auto">
                 请在下方输入您的信息以开始记录学习时间。

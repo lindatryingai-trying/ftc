@@ -1,13 +1,27 @@
+
 import React, { useState, useEffect } from 'react';
 import { useAttendance } from '../contexts/AttendanceContext';
 import { generateStudentQuote } from '../services/geminiService';
-import { Clock, CheckCircle, StopCircle, Users, ArrowLeft, ChevronRight } from 'lucide-react';
+import { CheckCircle, StopCircle, Users, ArrowLeft, ChevronRight, Database, RefreshCw, WifiOff, AlertCircle } from 'lucide-react';
+import CloudSetupModal from './CloudSetupModal';
 
 const StudentCheckIn: React.FC = () => {
-  const { clockIn, clockOut, activeSessions, groups, students } = useAttendance();
+  const { 
+    clockIn, 
+    clockOut, 
+    activeSessions, 
+    groups, 
+    students, 
+    jsonBinConfig, 
+    refreshData,
+    cloudStatus,
+    cloudError
+  } = useAttendance();
   
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [showCloudModal, setShowCloudModal] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -30,6 +44,17 @@ const StudentCheckIn: React.FC = () => {
   const activeSession = selectedStudentId 
     ? activeSessions.find(s => s.studentId === selectedStudentId) 
     : undefined;
+
+  const handleRefresh = async () => {
+      setIsRefreshing(true);
+      try {
+          await refreshData();
+      } catch (e) {
+          // Error handled in context
+      } finally {
+          setTimeout(() => setIsRefreshing(false), 500);
+      }
+  };
 
   const handleStart = () => {
     if (!selectedStudentId) return;
@@ -76,7 +101,41 @@ const StudentCheckIn: React.FC = () => {
   // Render Groups Selection
   if (!selectedGroupId) {
     return (
-      <div className="max-w-4xl mx-auto animate-fade-in">
+      <div className="max-w-4xl mx-auto animate-fade-in relative">
+         {showCloudModal && <CloudSetupModal onClose={() => setShowCloudModal(false)} />}
+         
+         {/* Top Bar: Cloud Settings & Refresh */}
+         <div className="absolute -top-10 right-0 sm:-right-2 flex items-center gap-2">
+            {jsonBinConfig && (
+                <button 
+                    onClick={handleRefresh}
+                    className={`p-1.5 rounded-lg border bg-white transition-all ${isRefreshing ? 'animate-spin text-blue-600 border-blue-200' : 'text-slate-400 border-slate-200 hover:text-blue-600 hover:border-blue-300'}`}
+                    title="刷新数据"
+                >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+            )}
+            <button 
+                onClick={() => setShowCloudModal(true)}
+                className={`text-xs flex items-center gap-1 px-2 py-1.5 rounded-lg border transition-colors
+                    ${jsonBinConfig 
+                        ? 'text-green-600 border-green-200 bg-green-50 hover:bg-green-100' 
+                        : 'text-slate-500 border-slate-200 hover:text-blue-600 hover:border-blue-300 bg-white'}`}
+            >
+                <Database className="w-3 h-3" />
+                {jsonBinConfig ? '已连接' : '设置数据源'}
+            </button>
+         </div>
+
+         {/* Connection Error Banner */}
+         {(cloudError || cloudStatus === 'error') && (
+             <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2 text-sm text-red-700">
+                 <AlertCircle className="w-4 h-4 shrink-0" />
+                 <span>无法连接到服务器，请检查网络或刷新。</span>
+                 <button onClick={handleRefresh} className="underline font-medium ml-auto">重试</button>
+             </div>
+         )}
+
          <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
             <div className="bg-blue-600 p-6 text-white text-center">
               <h2 className="text-2xl font-bold flex items-center justify-center gap-2">
@@ -87,8 +146,43 @@ const StudentCheckIn: React.FC = () => {
             </div>
             <div className="p-8 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {groups.length === 0 ? (
-                <div className="col-span-full text-center py-10 text-slate-400">
-                   <p>暂无分组数据，请联系老师在后台添加。</p>
+                <div className="col-span-full text-center py-12 text-slate-400 flex flex-col items-center gap-4">
+                   {jsonBinConfig ? (
+                       <>
+                           {cloudStatus === 'syncing' || isRefreshing ? (
+                               <RefreshCw className="w-10 h-10 animate-spin text-blue-500" />
+                           ) : (
+                               <div className="bg-slate-50 p-4 rounded-full">
+                                  <WifiOff className="w-8 h-8 text-slate-300" />
+                               </div>
+                           )}
+                           
+                           <div>
+                               <p className="font-medium text-slate-600">
+                                   {cloudStatus === 'syncing' ? '正在同步数据...' : '暂无分组数据'}
+                               </p>
+                               <p className="text-xs mt-1 max-w-xs mx-auto leading-relaxed">
+                                   已连接到云端。请等待老师更新名单，或点击上方刷新按钮。
+                               </p>
+                           </div>
+                           <button 
+                               onClick={handleRefresh}
+                               className="mt-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm hover:bg-blue-100 transition-colors"
+                           >
+                               手动刷新
+                           </button>
+                       </>
+                   ) : (
+                       <>
+                           <div className="bg-slate-50 p-4 rounded-full">
+                              <Database className="w-8 h-8 text-slate-300" />
+                           </div>
+                           <div>
+                               <p className="font-medium text-slate-600">未连接到数据库</p>
+                               <p className="text-xs mt-1">请扫描老师的二维码，或点击右上角设置。</p>
+                           </div>
+                       </>
+                   )}
                 </div>
               ) : (
                 groups.map(group => (
