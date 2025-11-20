@@ -371,15 +371,14 @@ const TeacherDashboard: React.FC = () => {
                 {/* Chart Section */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
                     <h3 className="text-lg font-bold text-slate-800 mb-4">时长 Top 10 排行榜</h3>
-                    {/* Increased height to 500px to show all 10 items clearly */}
-                    <div className="h-[500px] w-full">
+                    <div className="h-[600px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData} layout="vertical" margin={{ left: 10, right: 30 }}>
+                        <BarChart data={chartData} layout="vertical" margin={{ left: 20, right: 30, top: 20, bottom: 20 }}>
                         <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
                         <XAxis type="number" unit="h" />
-                        <YAxis dataKey="name" type="category" width={100} interval={0} />
+                        <YAxis dataKey="name" type="category" width={150} interval={0} tick={{fontSize: 12}} />
                         <Tooltip cursor={{fill: 'transparent'}} />
-                        <Bar dataKey="hours" fill="#4F46E5" radius={[0, 4, 4, 0]}>
+                        <Bar dataKey="hours" fill="#4F46E5" radius={[0, 4, 4, 0]} barSize={30}>
                             {chartData.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={index < 3 ? '#4F46E5' : '#94a3b8'} />
                             ))}

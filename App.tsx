@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AttendanceProvider, useAttendance } from './contexts/AttendanceContext';
 import StudentCheckIn from './components/StudentCheckIn';
@@ -303,7 +304,7 @@ const AppContent: React.FC = () => {
           <div className="flex items-center gap-3">
             {!imgError ? (
               <img 
-                src="https://ui-avatars.com/api/?name=FTC&background=2563eb&color=fff&size=96&rounded=true&font-size=0.33" 
+                src="./logo.png" 
                 alt="FTC Team Logo" 
                 className="h-12 w-auto object-contain"
                 onError={() => setImgError(true)}
@@ -380,7 +381,7 @@ const AppContent: React.FC = () => {
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 py-8 mt-auto mb-20 sm:mb-0">
         <div className="max-w-6xl mx-auto px-4 text-center text-slate-400 text-sm">
-          <p>© 2024 FTC Team 28119 & 30222 Attendance Tracker. All rights reserved.</p>
+          <p>© 2025 FTC Team 28119 & 30222. All rights reserved.</p>
         </div>
       </footer>
 
