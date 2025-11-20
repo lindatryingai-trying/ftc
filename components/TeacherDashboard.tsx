@@ -1,8 +1,105 @@
 import React, { useState } from 'react';
 import { useAttendance } from '../contexts/AttendanceContext';
 import { analyzeAttendance } from '../services/geminiService';
+import { saveFirebaseConfigToLocal, clearFirebaseConfig, getFirebaseConfigFromLocal } from '../services/firebaseService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { BrainCircuit, Trash2, RefreshCw, Users, Plus, X, Settings, LockKeyhole, Check } from 'lucide-react';
+import { BrainCircuit, Trash2, RefreshCw, Users, Plus, X, Settings, LockKeyhole, Check, Cloud, CloudOff, HelpCircle } from 'lucide-react';
+
+const CloudConfigModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { connectCloud, disconnectCloud, isCloudMode } = useAttendance();
+  const [configJson, setConfigJson] = useState('');
+  const [error, setError] = useState('');
+  
+  const storedConfig = getFirebaseConfigFromLocal();
+
+  const handleConnect = async () => {
+    try {
+        setError('');
+        const config = JSON.parse(configJson);
+        // Basic validation
+        if (!config.apiKey || !config.databaseURL) {
+            throw new Error("配置缺少 apiKey 或 databaseURL");
+        }
+        
+        saveFirebaseConfigToLocal(config);
+        await connectCloud(config);
+        onClose();
+    } catch (e: any) {
+        setError("配置格式错误或连接失败: " + e.message);
+    }
+  };
+
+  const handleDisconnect = () => {
+      if(window.confirm("确定要断开同步吗？应用将回到单机模式。")) {
+          clearFirebaseConfig();
+          disconnectCloud();
+          onClose();
+      }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+             <Cloud className="w-6 h-6 text-blue-600" />
+             多设备云同步设置
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {isCloudMode ? (
+            <div className="text-center py-8">
+                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Check className="w-8 h-8" />
+                </div>
+                <h4 className="text-xl font-bold text-slate-800">已连接云端数据库</h4>
+                <p className="text-slate-500 mt-2 mb-6">数据正在多台设备间实时同步。</p>
+                <button 
+                    onClick={handleDisconnect}
+                    className="bg-red-50 text-red-600 px-6 py-2 rounded-lg font-medium hover:bg-red-100 transition-colors flex items-center gap-2 mx-auto"
+                >
+                    <CloudOff className="w-4 h-4" /> 断开连接
+                </button>
+            </div>
+        ) : (
+            <div className="space-y-4">
+                <div className="bg-blue-50 p-4 rounded-lg text-sm text-blue-800 mb-4">
+                    <p className="font-bold flex items-center gap-2 mb-2">
+                        <HelpCircle className="w-4 h-4" /> 如何获取配置?
+                    </p>
+                    <ol className="list-decimal list-inside space-y-1 text-blue-700">
+                        <li>前往 <a href="https://console.firebase.google.com/" target="_blank" className="underline">Firebase Console</a> 创建项目。</li>
+                        <li>在 Build 菜单中选择 <strong>Realtime Database</strong> 并创建数据库。</li>
+                        <li><strong>重要：</strong>在 Rules 选项卡中，选择 <strong>Test Mode (测试模式)</strong> 以允许读写。</li>
+                        <li>在项目设置 (Project Settings) 中添加 Web App，复制 <code>firebaseConfig</code> 对象。</li>
+                    </ol>
+                </div>
+
+                <textarea 
+                    value={configJson}
+                    onChange={e => setConfigJson(e.target.value)}
+                    placeholder={'粘贴类似格式:\n{\n  "apiKey": "AIza...",\n  "authDomain": "...",\n  "databaseURL": "https://...",\n  "projectId": "..."\n}'}
+                    className="w-full h-40 p-4 border border-slate-300 rounded-lg font-mono text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+                
+                {error && <p className="text-red-500 text-sm">{error}</p>}
+
+                <button 
+                    onClick={handleConnect}
+                    disabled={!configJson.trim()}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    启用云同步
+                </button>
+            </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const ChangePasswordModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [oldPassword, setOldPassword] = useState('');
@@ -120,13 +217,15 @@ const TeacherDashboard: React.FC = () => {
     addGroup,
     removeGroup,
     addStudent,
-    removeStudent
+    removeStudent,
+    isCloudMode
   } = useAttendance();
 
   const [activeTab, setActiveTab] = useState<'stats' | 'manage'>('stats');
   const [aiReport, setAiReport] = useState<string | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
   const [showPwdModal, setShowPwdModal] = useState(false);
+  const [showCloudModal, setShowCloudModal] = useState(false);
   
   // Form states
   const [newGroupName, setNewGroupName] = useState('');
@@ -173,6 +272,7 @@ const TeacherDashboard: React.FC = () => {
   return (
     <div className="space-y-6 animate-fade-in relative">
       {showPwdModal && <ChangePasswordModal onClose={() => setShowPwdModal(false)} />}
+      {showCloudModal && <CloudConfigModal onClose={() => setShowCloudModal(false)} />}
 
       {/* Dashboard Tabs & Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 mb-6">
@@ -193,7 +293,16 @@ const TeacherDashboard: React.FC = () => {
             </button>
         </div>
         
-        <div className="py-2 px-4 sm:px-0">
+        <div className="py-2 px-4 sm:px-0 flex items-center gap-3">
+            <button 
+                onClick={() => setShowCloudModal(true)}
+                className={`text-sm flex items-center gap-1 transition-colors px-3 py-1.5 rounded-lg
+                    ${isCloudMode ? 'bg-green-50 text-green-700' : 'text-slate-500 hover:text-blue-600'}`}
+            >
+                {isCloudMode ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4" />}
+                {isCloudMode ? '已同步' : '云同步'}
+            </button>
+            <div className="h-4 w-px bg-slate-300 hidden sm:block"></div>
             <button 
                 onClick={() => setShowPwdModal(true)}
                 className="text-slate-500 hover:text-blue-600 text-sm flex items-center gap-1 transition-colors"

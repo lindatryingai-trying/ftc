@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { AttendanceProvider } from './contexts/AttendanceContext';
+import { AttendanceProvider, useAttendance } from './contexts/AttendanceContext';
 import StudentCheckIn from './components/StudentCheckIn';
 import TeacherDashboard from './components/TeacherDashboard';
-import { LayoutDashboard, UserCheck, GraduationCap, Share, X, PlusSquare, QrCode, Copy, Check, Smartphone, MoreVertical, Lock } from 'lucide-react';
+import { LayoutDashboard, UserCheck, GraduationCap, Share, X, PlusSquare, QrCode, Copy, Check, Smartphone, MoreVertical, Lock, Cloud } from 'lucide-react';
 
 // Component to guide iOS users to add to home screen
 const IOSInstallPrompt: React.FC = () => {
@@ -229,7 +229,8 @@ const LoginModal: React.FC<{ onClose: () => void, onSuccess: () => void }> = ({ 
   );
 };
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
+  const { isCloudMode } = useAttendance();
   const [view, setView] = useState<'student' | 'teacher'>('student');
   const [imgError, setImgError] = useState(false);
   const [showShare, setShowShare] = useState(false);
@@ -251,103 +252,123 @@ const App: React.FC = () => {
   };
 
   return (
-    <AttendanceProvider>
-      <div className="min-h-screen flex flex-col">
-        {/* Navbar */}
-        <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
-          <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {!imgError ? (
-                <img 
-                  src="logo.png" 
-                  alt="FTC Team Logo" 
-                  className="h-12 w-auto object-contain"
-                  onError={() => setImgError(true)}
-                />
-              ) : (
-                <div className="h-12 w-12 flex items-center justify-center bg-blue-50 rounded-full text-blue-600">
-                   <GraduationCap className="h-8 w-8" />
-                </div>
-              )}
-              <div>
-                <h1 className="text-xl font-bold text-slate-800 tracking-tight hidden sm:block">FTC28119&30222打卡机</h1>
-                <h1 className="text-xl font-bold text-slate-800 tracking-tight sm:hidden">FTC打卡机</h1>
+    <div className="min-h-screen flex flex-col">
+      {/* Navbar */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {!imgError ? (
+              <img 
+                src="logo.png" 
+                alt="FTC Team Logo" 
+                className="h-12 w-auto object-contain"
+                onError={() => setImgError(true)}
+              />
+            ) : (
+              <div className="h-12 w-12 flex items-center justify-center bg-blue-50 rounded-full text-blue-600">
+                  <GraduationCap className="h-8 w-8" />
+              </div>
+            )}
+            <div>
+              <h1 className="text-xl font-bold text-slate-800 tracking-tight hidden sm:block">FTC28119&30222打卡机</h1>
+              <h1 className="text-xl font-bold text-slate-800 tracking-tight sm:hidden">FTC打卡机</h1>
+              <div className="flex items-center gap-2">
                 <p className="text-xs text-slate-500 -mt-1 hidden sm:block">智能考勤系统</p>
+                {isCloudMode && (
+                  <div className="hidden sm:flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-100 uppercase tracking-wider">
+                      <Cloud className="w-3 h-3" />
+                      <span>Cloud Sync</span>
+                  </div>
+                )}
               </div>
             </div>
-            
-            <div className="flex items-center gap-2">
-              <div className="flex bg-slate-100 p-1 rounded-lg">
-                <button
-                  onClick={() => setView('student')}
-                  className={`px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2
-                    ${view === 'student' 
-                      ? 'bg-white text-blue-600 shadow-sm' 
-                      : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  <UserCheck className="w-4 h-4" />
-                  <span className="hidden sm:inline">学生打卡</span>
-                  <span className="sm:hidden">打卡</span>
-                </button>
-                <button
-                  onClick={handleTeacherClick}
-                  className={`px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2
-                    ${view === 'teacher' 
-                      ? 'bg-white text-blue-600 shadow-sm' 
-                      : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  {view === 'teacher' ? <LayoutDashboard className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                  <span className="hidden sm:inline">教师后台</span>
-                  <span className="sm:hidden">后台</span>
-                </button>
-              </div>
-
-              <button 
-                onClick={() => setShowShare(true)}
-                className="p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-lg transition-colors border border-transparent hover:border-blue-200"
-                title="手机访问 / 安装 App"
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <div className="flex bg-slate-100 p-1 rounded-lg">
+              <button
+                onClick={() => setView('student')}
+                className={`px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2
+                  ${view === 'student' 
+                    ? 'bg-white text-blue-600 shadow-sm' 
+                    : 'text-slate-500 hover:text-slate-700'}`}
               >
-                <QrCode className="w-5 h-5" />
+                <UserCheck className="w-4 h-4" />
+                <span className="hidden sm:inline">学生打卡</span>
+                <span className="sm:hidden">打卡</span>
+              </button>
+              <button
+                onClick={handleTeacherClick}
+                className={`px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2
+                  ${view === 'teacher' 
+                    ? 'bg-white text-blue-600 shadow-sm' 
+                    : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                {view === 'teacher' ? <LayoutDashboard className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                <span className="hidden sm:inline">教师后台</span>
+                <span className="sm:hidden">后台</span>
               </button>
             </div>
-          </div>
-        </header>
 
-        {/* Main Content */}
-        <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-8">
-          {view === 'student' ? (
-            <div className="animate-fade-in">
-              <div className="text-center mb-12">
-                <h2 className="text-3xl font-bold text-slate-800 mb-3">欢迎来到学习中心</h2>
-                <p className="text-slate-500 max-w-lg mx-auto">
-                  请在下方输入您的信息以开始记录学习时间。
-                  系统会自动统计您的每周进度。
-                </p>
-              </div>
-              <StudentCheckIn />
+            <button 
+              onClick={() => setShowShare(true)}
+              className="p-2.5 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-lg transition-colors border border-transparent hover:border-blue-200"
+              title="手机访问 / 安装 App"
+            >
+              <QrCode className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-8">
+        {view === 'student' ? (
+          <div className="animate-fade-in">
+            <div className="text-center mb-12">
+              {isCloudMode && (
+                <div className="inline-flex sm:hidden items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full mb-4 border border-green-100">
+                    <Cloud className="w-3 h-3" />
+                    <span>云端数据同步中</span>
+                </div>
+              )}
+              <h2 className="text-3xl font-bold text-slate-800 mb-3">欢迎来到学习中心</h2>
+              <p className="text-slate-500 max-w-lg mx-auto">
+                请在下方输入您的信息以开始记录学习时间。
+                系统会自动统计您的每周进度。
+              </p>
             </div>
-          ) : (
-            <TeacherDashboard />
-          )}
-        </main>
-
-        {/* Footer */}
-        <footer className="bg-white border-t border-slate-200 py-8 mt-auto mb-20 sm:mb-0">
-          <div className="max-w-6xl mx-auto px-4 text-center text-slate-400 text-sm">
-            <p>© 2024 FTC Team 28119 & 30222 Attendance Tracker. All rights reserved.</p>
+            <StudentCheckIn />
           </div>
-        </footer>
-
-        {/* Modals */}
-        <IOSInstallPrompt />
-        {showShare && <ShareModal onClose={() => setShowShare(false)} />}
-        {showLogin && (
-          <LoginModal 
-            onClose={() => setShowLogin(false)} 
-            onSuccess={handleLoginSuccess} 
-          />
+        ) : (
+          <TeacherDashboard />
         )}
-      </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="bg-white border-t border-slate-200 py-8 mt-auto mb-20 sm:mb-0">
+        <div className="max-w-6xl mx-auto px-4 text-center text-slate-400 text-sm">
+          <p>© 2024 FTC Team 28119 & 30222 Attendance Tracker. All rights reserved.</p>
+        </div>
+      </footer>
+
+      {/* Modals */}
+      <IOSInstallPrompt />
+      {showShare && <ShareModal onClose={() => setShowShare(false)} />}
+      {showLogin && (
+        <LoginModal 
+          onClose={() => setShowLogin(false)} 
+          onSuccess={handleLoginSuccess} 
+        />
+      )}
+    </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <AttendanceProvider>
+      <AppContent />
     </AttendanceProvider>
   );
 };

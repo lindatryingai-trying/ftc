@@ -1,11 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { AttendanceSession, AggregatedStats, Group, RegisteredStudent } from '../types';
+import { AttendanceSession, AggregatedStats, Group, RegisteredStudent, FirebaseConfig } from '../types';
+import { initFirebase, getFirebaseConfigFromLocal, arrayToObject, objectToArray } from '../services/firebaseService';
+import { ref, onValue, set as firebaseSet, update } from "firebase/database";
 
 interface AttendanceContextType {
   sessions: AttendanceSession[];
   activeSessions: AttendanceSession[];
   groups: Group[];
   students: RegisteredStudent[];
+  isCloudMode: boolean;
   
   // Actions
   addGroup: (name: string) => void;
@@ -17,6 +20,10 @@ interface AttendanceContextType {
   clockOut: (studentId: string) => Promise<string>;
   resetData: () => void;
   getAggregatedStats: () => AggregatedStats[];
+  
+  // Cloud specific
+  connectCloud: (config: FirebaseConfig) => Promise<void>;
+  disconnectCloud: () => void;
 }
 
 const AttendanceContext = createContext<AttendanceContextType | undefined>(undefined);
@@ -31,9 +38,30 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [students, setStudents] = useState<RegisteredStudent[]>([]);
+  const [isCloudMode, setIsCloudMode] = useState(false);
+  const [dbInstance, setDbInstance] = useState<any>(null);
 
-  // Load from local storage on mount
+  // Initial Load Logic
   useEffect(() => {
+    const cloudConfig = getFirebaseConfigFromLocal();
+    
+    if (cloudConfig) {
+      // Try to connect to cloud
+      try {
+        const db = initFirebase(cloudConfig);
+        setDbInstance(db);
+        setIsCloudMode(true);
+      } catch (e) {
+        console.error("Failed to auto-connect to cloud, falling back to local", e);
+        loadLocalData();
+      }
+    } else {
+      // No cloud config, load local
+      loadLocalData();
+    }
+  }, []);
+
+  const loadLocalData = () => {
     try {
       const storedSessions = localStorage.getItem('eduTrackerSessions');
       const storedGroups = localStorage.getItem('eduTrackerGroups');
@@ -45,36 +73,106 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } catch (e) {
       console.error("Failed to parse storage", e);
     }
-  }, []);
+  };
 
-  // Save to local storage
+  // --- Firebase Listeners (Read) ---
   useEffect(() => {
-    localStorage.setItem('eduTrackerSessions', JSON.stringify(sessions));
-  }, [sessions]);
+    if (isCloudMode && dbInstance) {
+      const dataRef = ref(dbInstance, '/');
+      
+      const unsubscribe = onValue(dataRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          setSessions(objectToArray<AttendanceSession>(data.sessions));
+          setGroups(objectToArray<Group>(data.groups));
+          setStudents(objectToArray<RegisteredStudent>(data.students));
+        } else {
+          // Empty DB
+          setSessions([]);
+          setGroups([]);
+          setStudents([]);
+        }
+      });
+
+      return () => unsubscribe();
+    }
+  }, [isCloudMode, dbInstance]);
+
+  // --- Local Storage Sync (Write - only if NOT cloud mode) ---
+  useEffect(() => {
+    if (!isCloudMode) {
+      localStorage.setItem('eduTrackerSessions', JSON.stringify(sessions));
+    }
+  }, [sessions, isCloudMode]);
 
   useEffect(() => {
-    localStorage.setItem('eduTrackerGroups', JSON.stringify(groups));
-  }, [groups]);
+    if (!isCloudMode) {
+      localStorage.setItem('eduTrackerGroups', JSON.stringify(groups));
+    }
+  }, [groups, isCloudMode]);
 
   useEffect(() => {
-    localStorage.setItem('eduTrackerStudents', JSON.stringify(students));
-  }, [students]);
+    if (!isCloudMode) {
+      localStorage.setItem('eduTrackerStudents', JSON.stringify(students));
+    }
+  }, [students, isCloudMode]);
 
   const activeSessions = sessions.filter(s => s.endTime === null);
+
+  // --- Helper: Write Data ---
+  const saveData = (path: string, data: any) => {
+    if (isCloudMode && dbInstance) {
+       // Firebase Write
+       // We need to write objects keyed by ID for easier updates, 
+       // but our state is Array.
+       // So we just update the specific node if possible, or overwrite the list.
+       // For simplicity in this hybrid approach, we will set the specific item path.
+       if (Array.isArray(data)) {
+          // If we are replacing a whole list (like resetData), careful.
+          // Ideally we use update or set on parent.
+          const obj = arrayToObject(data);
+          firebaseSet(ref(dbInstance, path), obj);
+       } else {
+          // Single item update/add
+          firebaseSet(ref(dbInstance, `${path}/${data.id}`), data);
+       }
+    } else {
+       // Local State Update is handled by the specific action functions calling setX
+    }
+  };
+  
+  const removeData = (path: string, id: string) => {
+      if (isCloudMode && dbInstance) {
+          firebaseSet(ref(dbInstance, `${path}/${id}`), null);
+      }
+  }
 
   // --- Management Actions ---
 
   const addGroup = useCallback((name: string) => {
     if (!name.trim()) return;
     const newGroup: Group = { id: Date.now().toString(), name: name.trim() };
-    setGroups(prev => [...prev, newGroup]);
-  }, []);
+    
+    if (isCloudMode) {
+        saveData('groups', newGroup);
+    } else {
+        setGroups(prev => [...prev, newGroup]);
+    }
+  }, [isCloudMode, dbInstance]);
 
   const removeGroup = useCallback((id: string) => {
-    // Remove group and its students
-    setGroups(prev => prev.filter(g => g.id !== id));
-    setStudents(prev => prev.filter(s => s.groupId !== id));
-  }, []);
+    if (isCloudMode) {
+        removeData('groups', id);
+        // Also need to remove students in this group for consistency, 
+        // but let's just remove the group for now or do a complex update.
+        // For simplicity in this prompt:
+        const studentsToRemove = students.filter(s => s.groupId === id);
+        studentsToRemove.forEach(s => removeData('students', s.id));
+    } else {
+        setGroups(prev => prev.filter(g => g.id !== id));
+        setStudents(prev => prev.filter(s => s.groupId !== id));
+    }
+  }, [isCloudMode, dbInstance, students]);
 
   const addStudent = useCallback((name: string, groupId: string) => {
     if (!name.trim()) return;
@@ -83,12 +181,21 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       name: name.trim(), 
       groupId 
     };
-    setStudents(prev => [...prev, newStudent]);
-  }, []);
+    
+    if (isCloudMode) {
+        saveData('students', newStudent);
+    } else {
+        setStudents(prev => [...prev, newStudent]);
+    }
+  }, [isCloudMode, dbInstance]);
 
   const removeStudent = useCallback((id: string) => {
-    setStudents(prev => prev.filter(s => s.id !== id));
-  }, []);
+    if (isCloudMode) {
+        removeData('students', id);
+    } else {
+        setStudents(prev => prev.filter(s => s.id !== id));
+    }
+  }, [isCloudMode, dbInstance]);
 
   // --- Attendance Actions ---
 
@@ -115,36 +222,77 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       endTime: null,
     };
 
-    setSessions(prev => [...prev, newSession]);
-  }, [activeSessions, students, groups]);
+    if (isCloudMode) {
+        saveData('sessions', newSession);
+    } else {
+        setSessions(prev => [...prev, newSession]);
+    }
+  }, [activeSessions, students, groups, isCloudMode, dbInstance]);
 
   const clockOut = useCallback(async (studentId: string): Promise<string> => {
-    const activeSessionIndex = sessions.findIndex(
-      s => s.studentId === studentId && s.endTime === null
-    );
+    const session = sessions.find(s => s.studentId === studentId && s.endTime === null);
 
-    if (activeSessionIndex === -1) {
+    if (!session) {
       throw new Error("找不到该学生的活跃打卡记录。");
     }
 
-    const updatedSessions = [...sessions];
-    updatedSessions[activeSessionIndex] = {
-        ...updatedSessions[activeSessionIndex],
+    const updatedSession = {
+        ...session,
         endTime: Date.now()
     };
     
-    setSessions(updatedSessions);
-    return updatedSessions[activeSessionIndex].studentId; 
-  }, [sessions]);
+    if (isCloudMode) {
+        saveData('sessions', updatedSession);
+    } else {
+        setSessions(prev => prev.map(s => s.id === session.id ? updatedSession : s));
+    }
+    
+    return session.studentId; 
+  }, [sessions, isCloudMode, dbInstance]);
 
   const resetData = useCallback(() => {
     if(window.confirm("确定要清除所有打卡记录吗？分组和名单将保留。")) {
-        setSessions([]);
+        if (isCloudMode) {
+            firebaseSet(ref(dbInstance, 'sessions'), null);
+        } else {
+            setSessions([]);
+        }
     }
+  }, [isCloudMode, dbInstance]);
+
+  const connectCloud = async (config: FirebaseConfig) => {
+      const db = initFirebase(config);
+      setDbInstance(db);
+      
+      // Migration: Upload local data to cloud if cloud is empty? 
+      // Or just overwrite cloud with local? 
+      // Let's overwrite cloud with local for initial sync to ensure consistency.
+      // Warning: This might overwrite existing cloud data if multiple people try to init.
+      // Safer: Just upload what we have.
+      
+      const rootRef = ref(db, '/');
+      const snapshot = await new Promise<any>(resolve => onValue(rootRef, resolve, { onlyOnce: true }));
+      
+      if (!snapshot.exists()) {
+          // Only upload local data if cloud is empty
+          await firebaseSet(rootRef, {
+              groups: arrayToObject(groups),
+              students: arrayToObject(students),
+              sessions: arrayToObject(sessions)
+          });
+      }
+      
+      setIsCloudMode(true);
+  };
+
+  const disconnectCloud = useCallback(() => {
+      setIsCloudMode(false);
+      setDbInstance(null);
+      // Reload will handle clearing the config from memory/service logic best
+      window.location.reload();
   }, []);
 
   const getAggregatedStats = useCallback((): AggregatedStats[] => {
-    // 1. Create a map for all registered students first (so we show 0 hours students too)
     const statsMap = new Map<string, AggregatedStats>();
 
     students.forEach(student => {
@@ -158,12 +306,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
     });
 
-    // 2. Iterate sessions and add up time
     sessions.forEach(session => {
-      // If student was deleted, we might still want to show them or handle them.
-      // For now, let's try to find them in the map. If not found (deleted student), 
-      // we can choose to ignore or add a temporary entry. 
-      // Let's add them so historical data isn't lost.
       if (!statsMap.has(session.studentId)) {
          statsMap.set(session.studentId, {
             studentId: session.studentId,
@@ -192,6 +335,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       activeSessions, 
       groups, 
       students,
+      isCloudMode,
       addGroup,
       removeGroup,
       addStudent,
@@ -199,7 +343,9 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       clockIn, 
       clockOut, 
       resetData, 
-      getAggregatedStats 
+      getAggregatedStats, 
+      connectCloud,
+      disconnectCloud
     }}>
       {children}
     </AttendanceContext.Provider>
