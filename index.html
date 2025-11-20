@@ -41,5 +41,143 @@
   <body class="bg-slate-50 text-slate-900 antialiased">
     <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
+<!-- 在你现有 HTML 的底部，</body> 标签之前加入这段代码 -->
+<script>
+// 配置信息 - 替换成你自己的
+const JSONBIN_CONFIG = {
+    BIN_ID: '691ea6c343b1c97be9b8ab73',      // 替换成你的 Bin ID
+    API_KEY: '$2a$10$pwEDjRAD5Nt3rQH11VMefOmBxXUYWbKKtynaHREolu.eqdHHWyP6W'     // 替换成你的 Secret Key
+};
+
+// 工具函数
+function getToday() {
+    return new Date().toISOString().split('T')[0];
+}
+
+function getUserId() {
+    let userId = localStorage.getItem('checkinUserId');
+    if (!userId) {
+        userId = 'user_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('checkinUserId', userId);
+    }
+    return userId;
+}
+
+// 保存数据到 JSONBin
+async function saveToJSONBin(data) {
+    try {
+        const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_CONFIG.BIN_ID}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Master-Key': JSONBIN_CONFIG.API_KEY
+            },
+            body: JSON.stringify(data)
+        });
+        return await response.json();
+    } catch (error) {
+        console.error('保存失败:', error);
+    }
+}
+
+// 从 JSONBin 读取数据
+async function loadFromJSONBin() {
+    try {
+        const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_CONFIG.BIN_ID}/latest`);
+        const result = await response.json();
+        return result.record;
+    } catch (error) {
+        console.error('加载失败:', error);
+        return { checkins: [] };
+    }
+}
+
+// 打卡功能
+async function handleCheckin() {
+    const today = getToday();
+    const userId = getUserId();
+    
+    // 加载现有数据
+    const data = await loadFromJSONBin();
+    
+    // 检查今天是否已打卡
+    const alreadyCheckedIn = data.checkins.some(item => 
+        item.userId === userId && item.date === today
+    );
+    
+    if (alreadyCheckedIn) {
+        alert('今天已经打卡过了！');
+        return;
+    }
+    
+    // 添加新打卡记录
+    data.checkins.push({
+        userId: userId,
+        date: today,
+        timestamp: new Date().toISOString()
+    });
+    
+    // 保存到 JSONBin
+    await saveToJSONBin(data);
+    alert('打卡成功！');
+    
+    // 更新显示
+    updateCheckinDisplay(data.checkins);
+}
+
+// 更新显示
+function updateCheckinDisplay(checkins) {
+    const userId = getUserId();
+    const myCheckins = checkins.filter(item => item.userId === userId)
+                               .sort((a, b) => b.date.localeCompare(a.date))
+                               .slice(0, 30); // 只显示最近30条
+    
+    // 查找显示打卡记录的容器
+    let container = document.getElementById('checkinList');
+    if (!container) {
+        // 如果不存在就创建一个
+        container = document.createElement('div');
+        container.id = 'checkinList';
+        document.body.appendChild(container);
+    }
+    
+    // 显示打卡记录
+    container.innerHTML = `
+        <h3>我的打卡记录</h3>
+        <ul>
+            ${myCheckins.map(item => `<li>${item.date} ✓</li>`).join('')}
+        </ul>
+        <p>总计打卡: ${myCheckins.length} 天</p>
+    `;
+}
+
+// 初始化
+async function init() {
+    // 绑定打卡按钮
+    const checkinBtn = document.getElementById('checkinBtn') || 
+                       document.querySelector('button') ||
+                       document.createElement('button');
+    
+    checkinBtn.id = 'checkinBtn';
+    checkinBtn.textContent = '今日打卡';
+    checkinBtn.onclick = handleCheckin;
+    
+    // 如果按钮不存在，就添加到页面
+    if (!document.getElementById('checkinBtn')) {
+        document.body.appendChild(checkinBtn);
+    }
+    
+    // 加载并显示现有记录
+    const data = await loadFromJSONBin();
+    updateCheckinDisplay(data.checkins);
+}
+
+// 页面加载完成后初始化
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}
+</script>
 </body>
 </html>
