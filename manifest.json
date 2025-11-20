@@ -3,17 +3,17 @@
   "name": "FTC28119&30222 智能考勤",
   "icons": [
     {
-      "src": "logo.png",
+      "src": "https://ui-avatars.com/api/?name=FTC&background=2563eb&color=fff&size=192&rounded=true&font-size=0.33",
       "type": "image/png",
       "sizes": "192x192"
     },
     {
-      "src": "logo.png",
+      "src": "https://ui-avatars.com/api/?name=FTC&background=2563eb&color=fff&size=512&rounded=true&font-size=0.33",
       "type": "image/png",
       "sizes": "512x512"
     }
   ],
-  "start_url": ".",
+  "start_url": "./index.html",
   "display": "standalone",
   "theme_color": "#2563eb",
   "background_color": "#f8fafc"
